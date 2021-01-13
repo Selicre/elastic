@@ -1,0 +1,24 @@
+[package]
+name = "elastic"
+version = "0.1.0"
+authors = ["x10A94 <hyperpone@gmail.com>"]
+edition = "2018"
+
+[features]
+debug = []
+
+[lib]
+crate-type = ["cdylib"]
+
+[profile.release]
+lto = true
+opt-level = 'z'
+panic = "abort"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+
+[build-dependencies]
+image = "0.23"
+lz4 = "1.23"

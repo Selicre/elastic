@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<style>
+body {
+	margin: 0;
+	background-color: black;
+	overflow: hidden;
+	color: white;
+	user-select: none;
+	-webkit-user-select: none;
+	font-family: sans-serif;
+}
+canvas {
+	image-rendering: crisp-edges;
+	image-rendering: -webkit-optimize-contrast;
+	image-rendering: pixelated;
+	width: 100vw;
+	height: 100vh;
+	object-fit: contain;
+}
+#banner {
+	position: absolute;
+	font-size: 40px;
+	width: 100vw;
+	height: 100vh;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+</style>
+<pre style="position: absolute;top:0;" id="output">JS doesn't seem to be loaded.</pre>
+<div id="banner">Loading..</div>
+<script>
+const banner = document.getElementById("banner");
+const output = document.getElementById("output");
+output.innerHTML = "JS loaded";
+try {
+	let promise = null;
+	if (WebAssembly.instantiateStreaming) {
+		promise = WebAssembly.instantiateStreaming(
+			fetch("./elastic.wasm")
+		);
+	} else {
+		promise = fetch('./elastic.wasm').then(response =>
+			response.arrayBuffer()
+		).then(bytes =>
+			WebAssembly.instantiate(bytes)
+		);
+	}
+	promise.then(a => {
+		output.innerHTML += "Loaded WASM\n";
+		const instance = a.instance;
+
+		window.instance = a.instance;
+		const width = 320;
+		const height = 180;
+		const keys = {};
+		let touches = [];
+
+		const canvas = document.getElementById("demo");
+		canvas.ondblclick = _ => canvas.requestFullscreen();
+		document.addEventListener("keydown", ev => { keys[ev.code] = true; }, false);
+		document.addEventListener("keyup", ev => { delete keys[ev.code]; }, false);
+		document.addEventListener("touchstart", ev => { touches = ev.touches }, false);
+		document.addEventListener("touchend", ev => touches = ev.touches, false);
+		canvas.width = width;
+		canvas.height = height;
+		output.innerHTML += "Registered callbacks\n";
+		output.innerHTML += "Registered buffer\n";
+		const image = new ImageData(
+			new Uint8ClampedArray(
+				instance.exports.memory.buffer,
+				instance.exports.BUF.value,
+				4 * width * height,
+			),
+			width,
+		);
+
+		const snd_buffer = new Float32Array(
+			instance.exports.memory.buffer,
+			instance.exports.SND.value,
+			1024,
+		);
+		output.innerHTML += "Created image/sound buffers\n";
+
+
+		const ctx = canvas.getContext("2d");
+		let frame = 0;
+		let deadline = 0;
+		let ts_old = 0;
+		const render = ts => {
+			try {
+				if (ts < deadline) {
+					requestAnimationFrame(render);
+					return;
+				}
+				deadline = ts + 15;
+				output.innerHTML = "Frame " + frame + "\n";
+				output.innerHTML += "Frametime " + (ts - ts_old).toFixed(2) + "ms\n";
+				ts_old = ts;
+				frame += 1;
+				let keys2 = (keys.ArrowLeft ? 1 : 0)
+							| (keys.KeyA ? 1 : 0)
+							| (keys.ArrowRight ? 2 : 0)
+							| (keys.KeyD ? 2 : 0)
+							| (keys.ArrowUp ? 4 : 0)
+							| (keys.ArrowDown ? 8 : 0)
+							| (keys.Space ? 16 : 0)
+							| (keys.KeyZ ? 32 : 0)
+							| (keys.KeyX ? 64 : 0)
+							| (keys.KeyC ? 128 : 0)
+
+				let first_touch = 0;
+				for (i of touches) {
+					if (i.screenX < window.innerWidth / 2) {
+						if (first_touch != 2) {
+							first_touch = 1;
+							keys2 |= 1;
+						} else {
+							keys2 |= 32;
+						}
+					} else {
+						if (first_touch != 1) {
+							first_touch = 2;
+							keys2 |= 2;
+						} else {
+							keys2 |= 32;
+						}
+					}
+				}
+				instance.exports.drw(keys2);
+				ctx.putImageData(image, 0, 0);
+				requestAnimationFrame(render);
+			} catch (e) {
+				output.innerHTML += e;
+			}
+		}
+		function startGame(ev) {
+			if (ev.key && ev.key != " ") return;
+			const audio_ctx = new AudioContext();
+			console.log("sample rate: ", audio_ctx.sampleRate);
+			const source = audio_ctx.createBufferSource();
+			const script_node = audio_ctx.createScriptProcessor(1024, 0, 1);
+			script_node.onaudioprocess = ev => {
+				instance.exports.snd();
+				ev.outputBuffer.getChannelData(0).set(snd_buffer);
+			}
+			source.connect(script_node);
+			script_node.connect(audio_ctx.destination);
+			source.start();
+			render(0);
+			banner.remove();
+			document.removeEventListener("keydown", startGame);
+			document.removeEventListener("touchstart", startGame);
+		}
+		document.addEventListener("keydown", startGame, false);
+		document.addEventListener("touchstart", startGame, false);
+		output.innerHTML += "Finished\n";
+		banner.innerHTML = "Touch or press space to start";
+	}).catch(e => output.innerHTML += e);
+} catch (e) {
+	output.innerHTML += e;
+}
+</script>
+<canvas id="demo"></canvas>
