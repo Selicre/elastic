@@ -34,6 +34,9 @@ canvas {
 const banner = document.getElementById("banner");
 const output = document.getElementById("output");
 output.innerHTML = "JS loaded";
+if (window.webkitAudioContext) {
+	window.AudioContext = window.webkitAudioContext;
+}
 try {
 	let promise = null;
 	if (WebAssembly.instantiateStreaming) {
@@ -88,13 +91,17 @@ try {
 		let frame = 0;
 		let deadline = 0;
 		let ts_old = 0;
+		let deadline_interval = 15;
+		const level_idx = instance.exports.ref();
+		console.log(level_idx);
+		window.setlevel = l => new Uint8Array(instance.exports.memory.buffer)[level_idx] = l;
 		const render = ts => {
 			try {
 				if (ts < deadline) {
 					requestAnimationFrame(render);
 					return;
 				}
-				deadline = ts + 15;
+				deadline = ts + deadline_interval;
 				output.innerHTML = "Frame " + frame + "\n";
 				output.innerHTML += "Frametime " + (ts - ts_old).toFixed(2) + "ms\n";
 				ts_old = ts;
@@ -152,8 +159,10 @@ try {
 			banner.remove();
 			document.removeEventListener("keydown", startGame);
 			document.removeEventListener("touchstart", startGame);
+			document.removeEventListener("mousedown", startGame);
 		}
 		document.addEventListener("keydown", startGame, false);
+		document.addEventListener("mousedown", startGame, false);
 		document.addEventListener("touchstart", startGame, false);
 		output.innerHTML += "Finished\n";
 		banner.innerHTML = "Touch or press space to start";

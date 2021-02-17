@@ -14,6 +14,7 @@ crate-type = ["cdylib"]
 lto = true
 opt-level = 'z'
 panic = "abort"
+debug = true
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -22,3 +23,4 @@ panic = "abort"
 [build-dependencies]
 image = "0.23"
 lz4 = "1.23"
+serde_json = "1.0"

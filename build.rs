@@ -47,18 +47,34 @@ fn main() {
     embed_fg(&val, &mut data, &mut pal).write(&mut f, "MAIN_GFX");
     let val = image::open("assets/thinface.png").unwrap().into_rgba();
     embed_font(&val, &mut f, "THINFACE");
-    let mut levels = 0;
-    for i in 0.. {
-        levels = i;
-        if std::fs::File::open(&format!("assets/level{}.png", i)).is_err() { break; }
-    }
-    writeln!(f, "pub static LEVELS: [LevelDef; {}] = [", levels).unwrap();
-    for id in 0..levels {
-        let val = image::open(&format!("assets/level{}.png", id)).unwrap().into_rgba();
-        embed_lvl(&val, &mut data).write_entry(&mut f);
+    let levels = [
+        "level01",
+        "level02",
+        "level03",
+        "level04",
+        "level06",
+        "level07",
+        "level08",
+        "level14",
+        "level05",
+        "level09",
+        "level12",
+        "level11",
+        "level13",
+        "level15",
+        "level10",
+    ];
+    writeln!(f, "pub static LEVELS: [LevelDef; {}] = [", levels.len()).unwrap();
+    //let aa = std::fs::read("assets/map.json").unwrap();
+    //embed_lvl_json(&aa, &mut data).write_entry(&mut f);
+    for id in levels.iter() {
+        //let val = image::open(&format!("assets/level{}.png", id)).unwrap().into_rgba();
+        //embed_lvl(&aa, &format!("assets/level{}.json", id), &val, &mut data).write_entry(&mut f);
+
+        let val = std::fs::read(&format!("levels/{}.json", id)).unwrap();
+        embed_lvl_json(&val, &mut data).write_entry(&mut f);
     }
     writeln!(f, "];").unwrap();
-    //data.extend_from_slice("Visit selic.re for details!  💙💙".as_bytes());
 
     let comp = lz4::block::compress(&data, lz4::block::CompressionMode::HIGHCOMPRESSION(12).into(), false).unwrap();
 
@@ -70,21 +86,38 @@ fn main() {
     writeln!(f, r#"pub static GFX_DATA_LZ4: [u8; {}] = *include_bytes!(concat!(env!("OUT_DIR"), "/gfx.bin"));"#, comp.len()).unwrap();
     writeln!(f, "pub static PAL_DATA: [u32; {}] = {:#08X?};", pal.len(), pal).unwrap();
 }
-fn embed_lvl(image: &image::RgbaImage, data: &mut Vec<u8>) -> LevelDef {
+
+fn embed_lvl_json(json: &[u8], data: &mut Vec<u8>) -> LevelDef {
     let offset = data.len();
-    data.extend(image.pixels().map(|c| {
-        c.0[0]
+    let v: serde_json::Value = serde_json::from_slice(json).unwrap();
+    let l = v["layers"][0]["data"].as_array().unwrap();
+    data.extend(l.iter().map(|gid| {
+        let gid = gid.as_u64().unwrap();
+        let c = gid & 0x1F;
+        let hflip = gid & 0x80000000 != 0;
+        let vflip = gid & 0x40000000 != 0;
+        let transpose = gid & 0x20000000 != 0;
+        let mask = ((transpose as u8) << 7) | ((hflip as u8) << 6) | ((vflip as u8) << 5);
+        mask | (c - 1) as u8
     }));
+    let width = v["width"].as_u64().unwrap() as _;
+    let height = v["height"].as_u64().unwrap() as _;
     LevelDef {
         offset,
-        width: image.width() as _,
-        height: image.height() as _
+        width,
+        height
     }
 }
 fn embed_fg(image: &image::RgbaImage, data: &mut Vec<u8>, pal: &mut Vec<u32>) -> DataDef {
     let mut palette = HashMap::new();
     let offset = data.len();
     let pal_offset = pal.len();
+    let bg = 0x3c245dffu32.swap_bytes();
+    let bg_w = 0x1896e9ffu32.swap_bytes();
+    palette.insert(bg, 0);
+    pal.push(bg);
+    palette.insert(bg_w, 1);
+    pal.push(bg_w);
     for ty in 0..image.height()/16 {
         for tx in 0..image.width()/16 {
             data.extend(image.view(tx*16, ty*16, 16, 16).pixels().map(|(_,_,c)| {
